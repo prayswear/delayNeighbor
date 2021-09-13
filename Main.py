@@ -1,11 +1,11 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import random
+import collections
 import sys
 from util import *
 from IIT_UP import iit_up
 from nrs import *
-import collections
 from workload import StationaryWorkload
 import simpy
 from policies import LruCache
@@ -22,15 +22,15 @@ class Config():
         self.DELAY_BOUNDS = [10, 25, 50]
         self.CACHE_SIZE = 10
         self.PROCESSING_CAPACITIES = [10, 10, 10]
-        self.network_size = 100
-        self.n_content = self.network_size * 10
-        self.n_warmup = 5000
-        self.n_request = 10000
-        self.alpha = 0.9
-        self.rate = 500
-        self.seed = 1
-        self.exp_level = 1
-        self.load_time = 100
+        self.NETWORK_SIZE = 100
+        self.N_CONTENT = self.NETWORK_SIZE * 10
+        self.N_WARMUP = 5000
+        self.N_REQUEST = 10000
+        self.ALPHA = 0.9
+        self.RATE = 500
+        self.SEED = 1
+        self.EXP_LEVEL = 1
+        self.LOAD_TIME = 100
 
 
 class Network(object):
@@ -41,10 +41,10 @@ class Network(object):
         self.delay_dict = dict(nx.shortest_path_length(topo, weight="delay"))
         self.partition = {}
         self.lnmrs_dict = {}  # {(pos,level)):LNMRS}
-        self.lnmrs_partition = {}  # {(pos,level)):pos}
-        self.lnmrs_belongness = {}  # {(pos,level):(pos,level))}
+        self.lnmrs_partition = {}  # {(pos,level):[pos]}
+        self.lnmrs_belongness = {}  # {(pos,level):pos}
         self.content_source = {}  # {content_id:pos}
-        self.delay_neighbors = {}  # {(pos,level):(pos,level)}
+        self.delay_neighbors = {}  # {(pos,level):[pos]}
         self.total_request = 0
         self.success_request = 0
 
@@ -75,7 +75,7 @@ class Network(object):
         # 放置内容
         for n in self.fc_topo.nodes:
             self.fc_topo.nodes[n]['content'] = []
-        for c in range(1, self.config.n_content + 1):
+        for c in range(1, self.config.N_CONTENT + 1):
             node = random.choice(self.fc_topo.nodes)
             node['content'].append(c)
             self.content_source[c] = node
@@ -88,11 +88,11 @@ class Network(object):
                     lnmrs.register(c, n)
 
     def init_events(self):
-        workload = StationaryWorkload(self.fc_topo, self.config.n_content,
-                                      self.config.alpha, rate=self.config.rate,
-                                      n_warmup=self.config.n_warmup, n_measured=self.config.n_request,
-                                      seed=self.config.seed)
-        self.events = workload.single_level_events(self.config.exp_level)
+        workload = StationaryWorkload(self.fc_topo, self.config.N_CONTENT,
+                                      self.config.ALPHA, rate=self.config.RATE,
+                                      n_warmup=self.config.N_WARMUP, n_measured=self.config.N_REQUEST,
+                                      seed=self.config.SEED)
+        self.events = workload.single_level_events(self.config.EXP_LEVEL)
 
     def start_simulate(self):
         self.env = simpy.Environment()
@@ -101,26 +101,26 @@ class Network(object):
         self.env.run()
 
     def cooperate_resolve(self, pos, level, lnmrs):
+
         pass
+
+    def find_global_closest(self, pos, level):
+        neighbors = []
+        for p, l in self.lnmrs_dict.keys():
+            if l == level and p != pos and self.delay_dict[pos][p] < self.config.DELAY_BOUNDS[level]:
+                neighbors.append(p)
+        neighbors = sorted(neighbors, key=lambda x: self.delay_dict[pos][x])
+        return neighbors
 
     # 全局最近的邻居
     def generate_delay_neighbor_global(self):
-        for level in self.config.SERVICE_LEVELS:
-            pass
-
-        for node in self.fc_topo.nodes:
-            for level in self.config.SERVICE_LEVELS:
-
-                self.delay_neighbors[(node, level)] = {}
-                if self.delay_dict[node]:
-                    pass
-
-    # TODO 解析后不是马上就有数据的，要等取回？
+        for pos, level in self.lnmrs_dict.keys():
+            self.delay_neighbors[(pos, level)] = self.find_global_closest(pos, level)
 
     # 在本地查询则添加负载，负载在load_time ms后不计
     def lnmrs_load(self, lnmrs):
         lnmrs.current_load += 1
-        yield self.env.timeout(self.config.load_time)
+        yield self.env.timeout(self.config.LOAD_TIME)
         lnmrs.current_load -= 1
 
     def put_cache(self, node, content):
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     # 配置
     config = Config()
     # 生成机房拓扑
-    topo = nx.barabasi_albert_graph(config.network_size, 1, seed=config.seed)
+    topo = nx.barabasi_albert_graph(config.NETWORK_SIZE, 1, seed=config.SEED)
     for u, v in topo.edges:
         topo[u][v]["delay"] = random.uniform(*config.LINK_DELAY_RANGE)
 
