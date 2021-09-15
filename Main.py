@@ -110,6 +110,7 @@ class Network(object):
             if l == level and p != pos and self.delay_dict[pos][p] < self.config.DELAY_BOUNDS[level]:
                 neighbors.append(p)
         neighbors = sorted(neighbors, key=lambda x: self.delay_dict[pos][x])
+
         return neighbors
 
     # 全局最近的邻居
